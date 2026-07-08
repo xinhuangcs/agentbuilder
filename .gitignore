@@ -1,0 +1,27 @@
+# local
+README_zh.md
+/doc/
+CLAUDE.md
+/blog/
+/landing/
+/assets/
+
+# env
+.env
+.env.*
+!.env.example
+
+# build
+.venv/
+/dist/
+*.egg-info/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+/site/
+.idea/
+.claude/
+.DS_Store
+data/
+outputs/

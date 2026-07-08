@@ -1,0 +1,115 @@
+site_name: agentbuilder
+site_description: A general-purpose framework for building LLM agents, with tools, skills, memory, RAG, context engineering, guardrails, HITL, and observability.
+site_url: https://xinhuangcs.github.io/agentbuilder/
+repo_url: https://github.com/xinhuangcs/agentbuilder
+repo_name: xinhuangcs/agentbuilder
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - content.code.copy
+    - toc.follow
+    - search.suggest
+  palette:
+    - scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]        # src-layout: import agentbuilder from src/ for the API reference
+          options:
+            show_source: false
+            members_order: source
+            # No docstring_style declared: this project's docstrings use Google-style
+            # English sections (Args:/Returns:/Raises:), rendered by the default parser.
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - toc:
+      permalink: true
+      # Unicode-aware anchor slugs so Chinese headings get real, stable ids
+      # (the default slugify strips non-ASCII, which would break every #中文 link).
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+
+# Bilingual site: English at the root, 中文 under /zh/. The language switcher below is
+# a native mkdocs-material feature (no extra plugin).
+extra:
+  alternate:
+    - name: English
+      link: /agentbuilder/
+      lang: en
+    - name: 中文
+      link: /agentbuilder/zh/
+      lang: zh
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Guides:
+      - Quickstart: guides/quickstart.md
+      - LLM clients & providers: guides/llm-clients.md
+      - Agents & workflows: guides/agents.md
+      - Tools: guides/tools.md
+      - Structured output: guides/structured-output.md
+      - Memory: guides/memory.md
+      - Retrieval & RAG: guides/retrieval-and-rag.md
+      - Context engineering: guides/context-engineering.md
+      - Guardrails & human-in-the-loop: guides/guardrails-and-hitl.md
+      - Observability: guides/observability.md
+      - Prompt registry: guides/prompts.md
+      - Skills: guides/skills.md
+      - Scope & async: guides/scope-and-async.md
+      - Testing: guides/testing.md
+  - API Reference:
+      - Core: reference/core.md
+      - Agents: reference/agents.md
+      - Tools: reference/tools.md
+      - Retrieval: reference/retrieval.md
+      - Memory: reference/memory.md
+      - RAG: reference/rag.md
+      - Context: reference/context.md
+      - Runtime: reference/runtime.md
+      - Skills: reference/skills.md
+      - Prompts: reference/prompts.md
+      - Config: reference/config.md
+      - Testing: reference/testing.md
+  - 中文:
+      - 首页: zh/index.md
+      - 安装: zh/installation.md
+      - 指南:
+          - 快速开始: zh/guides/quickstart.md
+          - LLM 客户端与厂商: zh/guides/llm-clients.md
+          - Agent 与工作流: zh/guides/agents.md
+          - 工具: zh/guides/tools.md
+          - 结构化输出: zh/guides/structured-output.md
+          - 记忆: zh/guides/memory.md
+          - 检索与 RAG: zh/guides/retrieval-and-rag.md
+          - 上下文工程: zh/guides/context-engineering.md
+          - 护栏与人在回路: zh/guides/guardrails-and-hitl.md
+          - 可观测性: zh/guides/observability.md
+          - 提示词注册表: zh/guides/prompts.md
+          - 技能: zh/guides/skills.md
+          - Scope 与异步: zh/guides/scope-and-async.md
+          - 测试: zh/guides/testing.md
+      - API 参考: zh/reference.md
