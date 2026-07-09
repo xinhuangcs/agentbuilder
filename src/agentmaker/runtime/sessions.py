@@ -29,6 +29,10 @@ from ..core.message import Message
 from ..core.multimodal import content_text
 from ..core.sqlite_util import open_sqlite, require_columns
 from ..retrieval.index_sync import IndexSync, SyncIndexSync
+from ..retrieval.scope import Scope
+from ..retrieval.scope_sql import (scope_column_for, scope_column_names, scope_exact_where_clause,
+                                   scope_store_values, scope_where_clause)
+from ..retrieval.types import RetrievalResult
 
 # Metadata flag marking that the TEXT content column holds JSON-encoded multimodal parts
 # (the flag is stripped again on load, so callers see their original metadata untouched).
@@ -42,10 +46,6 @@ def _encode_content(message: Message):
         metadata = {**(message.metadata or {}), _CONTENT_FORMAT_KEY: "parts"}
         return json.dumps(message.content, ensure_ascii=False), metadata
     return message.content, message.metadata
-from ..retrieval.scope import Scope
-from ..retrieval.scope_sql import (scope_column_for, scope_column_names, scope_exact_where_clause,
-                                   scope_store_values, scope_where_clause)
-from ..retrieval.types import RetrievalResult
 
 
 @dataclass(frozen=True)

@@ -1,5 +1,6 @@
 # agentmaker
 
+[![CI](https://github.com/xinhuangcs/agentmaker/actions/workflows/ci.yml/badge.svg)](https://github.com/xinhuangcs/agentmaker/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/agentmaker)](https://pypi.org/project/agentmaker/)
 [![Python](https://img.shields.io/pypi/pyversions/agentmaker)](https://pypi.org/project/agentmaker/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/xinhuangcs/agentmaker/blob/main/LICENSE)

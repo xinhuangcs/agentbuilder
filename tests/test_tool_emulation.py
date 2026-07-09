@@ -1,8 +1,6 @@
 """Hermetic tests for the tool-call translation shim (ToolEmulationAdapter) used with non-function-calling models (no key / no network)."""
 import asyncio
 
-import pytest
-
 from agentmaker import Agent, CalculatorTool, LLMClient
 from agentmaker.core.adapters.tool_emulation import ToolEmulationAdapter
 from agentmaker.core.llm_response import LLMResponse

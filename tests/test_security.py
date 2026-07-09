@@ -313,7 +313,7 @@ def test_tracer_redacts_secrets_and_pii():
     """Secret key names, secret-looking values, and the home-directory username are redacted; overlong values are truncated; *_tokens fields are not falsely hit."""
     tracer = Tracer()
     tracer.emit({"type": "tool_call", "tool": "send_mail", "latency_ms": 30,
-                 "params": {"to": "a@x.com", "api_key": "sk-ABCDEF1234567890abcdefgh",
+                 "params": {"to": "a@x.com", "api_key": "sk-ABCDEF1234567890abcdefgh",  # gitleaks:allow (fake key; the assert below checks it is redacted)
                             "body": "正文" * 200},
                  "result": "写到 /Users/jasonh/Desktop/logs/run.txt",
                  "usage": {"total_tokens": 165}})

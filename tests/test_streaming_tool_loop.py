@@ -62,7 +62,6 @@ def test_astream_run_tool_loop_persists_one_turn_history():
     llm = ScriptedLLM([ScriptedLLM.tool_call("echo_tool", {"text": "x"}), "答案"])
     agent = Agent("t", llm, tools=[EchoTool()])
     run(collect(agent, "问题"))
-    history = run(agent.harness.session.aload(scope=agent.scope)) if hasattr(agent.harness, "session") else None
     # session history is persisted via agent.add_messages; verify count and roles directly from the in-memory store
     messages = run(agent.aget_history()) if hasattr(agent, "aget_history") else None
     if messages is None:
