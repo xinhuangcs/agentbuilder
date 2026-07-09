@@ -170,6 +170,8 @@ print(result.final_output)
 | `LLMClient("anthropic")` | `ANTHROPIC_API_KEY` |
 | `LLMClient("gemini")` | `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) |
 
+To set the key, run `export DEEPSEEK_API_KEY="sk-..."` in your shell (PowerShell: `$env:DEEPSEEK_API_KEY = "sk-..."`), or load a `.env` file with python-dotenv — see [Provider API keys](../installation.md#provider-api-keys).
+
 Pass `model=` to pick a specific model, for example `LLMClient("openai", model="gpt-4.1-nano")`. See [LLM clients & providers](llm-clients.md) for the full provider list, self-hosted and OpenAI-compatible endpoints, and per-call options.
 
 Everything else stays the same: the `@tool` definition, the `Agent` construction, `run(...)`, and `result.final_output` all behave identically. That is the point of `ScriptedLLM`, your test and your production code exercise the same loop.

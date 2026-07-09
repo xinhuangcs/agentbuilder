@@ -53,6 +53,35 @@ pip install "agentmaker[all]"              # everything below
 | `zhipu` | `ZHIPUAI_API_KEY` |
 | `modelscope` | `MODELSCOPE_API_KEY` |
 
+Set the variable in your shell before running:
+
+```bash
+export DEEPSEEK_API_KEY="sk-..."          # macOS / Linux
+```
+
+```powershell
+$env:DEEPSEEK_API_KEY = "sk-..."          # Windows PowerShell
+```
+
+Prefer a `.env` file? The variable names inside `.env` are exactly the ones in the table above — a `.env` file is just another way to set the same environment variables:
+
+```text
+# .env
+DEEPSEEK_API_KEY=sk-...
+```
+
+agentmaker deliberately does not read `.env` itself (loading environment files is an application-level decision), but the standard [python-dotenv](https://pypi.org/project/python-dotenv/) works as usual:
+
+```python
+from dotenv import load_dotenv
+load_dotenv()                             # reads .env from the working directory
+
+from agentmaker import Agent, LLMClient
+agent = Agent("assistant", LLMClient("deepseek"))
+```
+
+Keep `.env` out of version control (add it to `.gitignore`).
+
 Local engines (`ollama`, `vllm`, `sglang`) need no key. See [LLM clients & providers](guides/llm-clients.md) for the full provider list and the `provider:model` syntax.
 
 ## Installing with uv

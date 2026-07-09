@@ -170,6 +170,8 @@ print(result.final_output)
 | `LLMClient("anthropic")` | `ANTHROPIC_API_KEY` |
 | `LLMClient("gemini")` | `GEMINI_API_KEY`（或 `GOOGLE_API_KEY`） |
 
+设置方式：在 shell 里执行 `export DEEPSEEK_API_KEY="sk-..."`（PowerShell：`$env:DEEPSEEK_API_KEY = "sk-..."`），或配合 python-dotenv 使用 `.env` 文件——见[安装页的「厂商 API 密钥」](../installation.md)。
+
 传入 `model=` 可指定具体模型，例如 `LLMClient("openai", model="gpt-4.1-nano")`。完整的服务商列表、自托管与 OpenAI 兼容端点、以及逐次调用的选项，见 [LLM 客户端与服务商](llm-clients.md)。
 
 其余一切保持不变：`@tool` 定义、`Agent` 构造、`run(...)` 和 `result.final_output` 的行为都完全一致。这正是 `ScriptedLLM` 的意义所在，你的测试代码和生产代码走的是同一个循环。
