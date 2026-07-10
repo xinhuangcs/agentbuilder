@@ -1,14 +1,6 @@
-/* Two link-usability fixes, both re-run after every instant-navigation page swap
-   via material's document$ observable.
-
-   1. External links open in a new tab (rel=noopener).
-   2. The header language toggle (overrides/partials/alternate.html) is rendered
-      server-side per page, but material's instant loading swaps page content
-      WITHOUT re-rendering the header — so after in-site navigation the toggle
-      would still point at the PREVIOUS page's translation. We recompute its href
-      from the current path. Structure is symmetric (mkdocs-static-i18n with
-      fallback_to_default builds every en page under /zh/ too), so a pure path
-      rewrite is always valid — no probing needed. */
+/* Page-level fixes, re-run after every instant-navigation page swap via
+   material's document$ observable.
+ */
 
 (function () {
   function externalLinks() {
@@ -39,7 +31,40 @@
     btn.setAttribute("href", isZh ? root + rest : zhRoot + rest);
   }
 
-  function run() { externalLinks(); syncLangToggle(); }
+  function parseGood(raw) {
+    try { var d = JSON.parse(raw); return d && typeof d.stars === "number" ? d : null; }
+    catch (e) { return null; }
+  }
+
+  function fixSourceFacts() {
+    var factsEl = document.querySelector(".md-header .md-source__facts");
+    if (!factsEl) return;
+    var key = Object.keys(sessionStorage).filter(function (k) {
+      return k.slice(-9) === ".__source";
+    })[0];
+    var cached = key ? parseGood(sessionStorage.getItem(key)) : null;
+    if (cached) {
+      try { localStorage.setItem("__source_backup", JSON.stringify(cached)); } catch (e) {}
+      return;
+    }
+    var backup = parseGood(localStorage.getItem("__source_backup"));
+    if (backup) {
+      var stars = factsEl.querySelector(".md-source__fact--stars");
+      var forks = factsEl.querySelector(".md-source__fact--forks");
+      if (stars) stars.textContent = backup.stars.toLocaleString();
+      if (forks) forks.textContent = backup.forks.toLocaleString();
+      if (key) { try { sessionStorage.setItem(key, JSON.stringify(backup)); } catch (e) {} }
+    } else {
+      factsEl.style.display = "none";
+    }
+  }
+
+  function run() {
+    externalLinks();
+    syncLangToggle();
+    fixSourceFacts();
+    setTimeout(fixSourceFacts, 2500);
+  }
 
   if (window.document$ && window.document$.subscribe) {
     window.document$.subscribe(run);

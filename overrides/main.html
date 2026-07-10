@@ -3,21 +3,29 @@
 {% block site_meta %}
   {{ super() }}
   <script>
-    /* Material fetches the GitHub star/fork counts client-side and caches them in
-       sessionStorage (key "<base>.__source") for the whole browser session, so the
-       numbers can go stale. Expire that cache after 10 minutes. This inline script
-       runs before the deferred theme bundle reads the cache. */
     (function () {
       try {
-        var stamp = "__source_fetched_at";
-        var last = +sessionStorage.getItem(stamp) || 0;
-        if (Date.now() - last > 10 * 60 * 1000) {
-          Object.keys(sessionStorage).forEach(function (k) {
-            if (k.slice(-10) === ".__source") sessionStorage.removeItem(k);
-          });
-          sessionStorage.setItem(stamp, String(Date.now()));
+        var BACKUP = "__source_backup", STAMP = "__source_fetched_at", TTL = 30 * 60 * 1000;
+        function parseGood(raw) {
+          try { var d = JSON.parse(raw); return d && typeof d.stars === "number" ? d : null; }
+          catch (e) { return null; }
         }
-      } catch (e) { /* private mode etc. — the theme just falls back to its own flow */ }
+        var sourceKeys = Object.keys(sessionStorage).filter(function (k) {
+          return k.slice(-9) === ".__source";
+        });
+        var backup = parseGood(localStorage.getItem(BACKUP));
+        sourceKeys.forEach(function (k) {
+          var good = parseGood(sessionStorage.getItem(k));
+          if (good) { backup = good; localStorage.setItem(BACKUP, JSON.stringify(good)); }
+          else if (backup) { sessionStorage.setItem(k, JSON.stringify(backup)); }
+          else { sessionStorage.removeItem(k); }
+        });
+        var last = +sessionStorage.getItem(STAMP) || 0;
+        if (Date.now() - last > TTL) {
+          sourceKeys.forEach(function (k) { sessionStorage.removeItem(k); });
+          sessionStorage.setItem(STAMP, String(Date.now()));
+        }
+      } catch (e) { /* private mode etc. — the theme falls back to its own flow */ }
     })();
   </script>
 {% endblock %}
