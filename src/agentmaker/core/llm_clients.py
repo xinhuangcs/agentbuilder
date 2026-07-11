@@ -16,7 +16,7 @@ Related modules:
 
 import os
 from dataclasses import dataclass
-from typing import AsyncIterator, Dict, Optional
+from typing import Any, AsyncIterator, Callable, Dict, Optional
 
 from .exceptions import LLMConfigError
 from .adapters import _ADAPTERS
@@ -200,8 +200,10 @@ class LLMClient:
 
     def __init__(self, provider: str = "deepseek", model: Optional[str] = None, api_key: Optional[str] = None,
                  base_url: Optional[str] = None, *, timeout: float = 60.0,
-                 default_temperature=None, context_window=None, max_output_tokens=None,
-                 supports_function_calling=None, supports_vision=None, emulate_tools: bool = False,
+                 default_temperature: Optional[float] = None, context_window: Optional[int] = None,
+                 max_output_tokens: Optional[int] = None,
+                 supports_function_calling: Optional[bool] = None, supports_vision: Optional[bool] = None,
+                 emulate_tools: bool = False,
                  profile: Optional[ProviderProfile] = None):
         """Take the config profile by provider, resolve model/key/base_url, validate, and instantiate the adapter by protocol.
 
@@ -296,7 +298,9 @@ class LLMClient:
             self._adapter = ToolEmulationAdapter(self._adapter)
             self.supports_function_calling = True   # tool calls are emulated via the shim, so an Agent with tools no longer fails loud
 
-    async def chat(self, messages: list[dict], *, temperature=None, max_tokens=None, output_schema=None, **kwargs) -> LLMResponse:
+    async def chat(self, messages: list[dict], *, temperature: Optional[float] = None,
+                   max_tokens: Optional[int] = None, output_schema: Optional[dict] = None,
+                   **kwargs: Any) -> LLMResponse:
         """One-shot (non-streaming) async call, delegated to the underlying adapter, returning a unified LLMResponse (the framework is fully async: this is the only call entry point).
 
         Args:
@@ -330,7 +334,10 @@ class LLMClient:
                 "(supports_vision=False): switch to a vision-capable model, or pass "
                 "supports_vision=True explicitly if you know this specific model does.")
 
-    async def stream(self, messages: list[dict], *, temperature=None, max_tokens=None, on_stats=None, **kwargs) -> AsyncIterator[str]:
+    async def stream(self, messages: list[dict], *, temperature: Optional[float] = None,
+                     max_tokens: Optional[int] = None,
+                     on_stats: Optional[Callable[[StreamStats], None]] = None,
+                     **kwargs: Any) -> AsyncIterator[str]:
         """Streaming async call (async generator), delegated to the underlying adapter to emit text piece by piece.
 
         Args:

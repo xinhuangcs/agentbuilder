@@ -15,12 +15,17 @@ import logging
 import uuid
 from dataclasses import dataclass
 from time import perf_counter
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from ...core.exceptions import RunCancelled, RunLimitExceeded
 from ...retrieval.scope import Scope          # Governance lives in execution, so the real type is available (retrieval does not import runtime, no cycle; checkpoint.py set the precedent).
 from .run_policy import RunPolicy
 from ...core.trace_events import EVENT_LLM_CALL
+
+if TYPE_CHECKING:
+    from ...core.llm_clients import LLMClient
+    from ...core.llm_response import LLMResponse
+    from ..observability import Tracer
 
 _log = logging.getLogger(__name__)   # run_context deliberately does not hold a tracer (to avoid a reverse observability->execution dependency); warnings go through the stdlib logging.
 
@@ -223,7 +228,8 @@ def _governed_emit(tracer, resp, origin: str, start: float) -> None:
                  **correlation()})
 
 
-async def governed_chat(llm, messages, *, tracer=None, origin: str = "", **kwargs):
+async def governed_chat(llm: "LLMClient", messages: list[dict], *, tracer: "Optional[Tracer]" = None,
+                        origin: str = "", **kwargs: Any) -> "LLMResponse":
     """Governed llm.chat (async): check_limits -> await chat -> record_llm (count + tokens) -> optional trace -> hard token limit.
 
     Args:

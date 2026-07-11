@@ -16,12 +16,15 @@ import asyncio
 import inspect
 import logging
 import re
-from typing import Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
 
 from ..core.exceptions import ToolRegistrationError
 from ..prompts import DEFAULT_PROMPTS
 from .base import ConfirmCallback, Tool, ToolParameter, _TOOL_NAME_RE   # single source of truth for the name rule lives in base (shared by from_callable / decorator)
 from .response import ToolResponse
+
+if TYPE_CHECKING:
+    from ..prompts import PromptRegistry
 
 logger = logging.getLogger(__name__)   # full tracebacks of tool-execution exceptions go here (the library configures no handler; the host takes over, see the NullHandler in agentmaker/__init__)
 
@@ -143,7 +146,7 @@ class ToolRegistry:
             raise ToolRegistrationError(f"tool name '{tool.name}' is already registered; pass overwrite=True explicitly to replace it")
         self._tools[tool.name] = tool
 
-    def register_all(self, tools, *, on_conflict: str = "error") -> List[str]:
+    def register_all(self, tools: Iterable[Tool], *, on_conflict: str = "error") -> List[str]:
         """Register a batch of tools, returning the list of tool names actually registered.
 
         on_conflict controls duplicate-name behavior: "error" (default, a duplicate raises
@@ -207,7 +210,8 @@ class ToolRegistry:
 
         Args:
             func: the type-annotated function (sync or async).
-            name / description: default to the function name / the first line of the docstring.
+            name: defaults to the function name.
+            description: defaults to the first line of the function's docstring.
             requires_confirmation: set True for high-risk actions.
             external_content: set True when the result is content from an external source.
             supports_parallel: set True for read-only, concurrency-safe functions to allow concurrent execution with other parallel tools in the same round (see the Tool class attribute).
@@ -219,7 +223,8 @@ class ToolRegistry:
                                          supports_parallel=supports_parallel), overwrite=overwrite)
 
     @classmethod
-    def from_tools(cls, tools, *, prompts=None) -> "Optional[ToolRegistry]":
+    def from_tools(cls, tools: "Optional[Iterable[Tool] | ToolRegistry]", *,
+                   prompts: "Optional[PromptRegistry]" = None) -> "Optional[ToolRegistry]":
         """The single-source-of-truth entry that normalizes tools into a ToolRegistry (list[Tool]->registry / ToolRegistry->as-is / None->None).
 
         Both Agent(tools=) and build_agent(spec.tools=) convert through it, avoiding two copies

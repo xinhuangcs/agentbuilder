@@ -10,9 +10,12 @@ and a denied tool is not even asked for approval. See ../doc/tools/permissions.m
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Iterable, Optional
+from typing import TYPE_CHECKING, Iterable, Optional
 
 from ..prompts import DEFAULT_PROMPTS
+
+if TYPE_CHECKING:
+    from .base import Tool
 
 
 @dataclass
@@ -49,7 +52,7 @@ class ToolPermissions:
         self.deny_origins = set(self.deny_origins)
         self.prompts = self.prompts or DEFAULT_PROMPTS
 
-    def denial_reason(self, tool) -> Optional[str]:
+    def denial_reason(self, tool: str | Tool) -> Optional[str]:
         """Decide whether a call is allowed: return the denial reason (readable, can be fed back to the model); return None to permit.
 
         Args:
