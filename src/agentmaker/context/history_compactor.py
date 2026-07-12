@@ -14,13 +14,17 @@ and is instead guaranteed by upstream chunking to control size).
 import hashlib
 import logging
 from collections import OrderedDict
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, Awaitable, Callable, List, Optional, Tuple
 
 from ..core.llm_clients import LLMClient
 from ..core.message import Message
 from ..core.multimodal import content_text, content_tokens
 from ..core.text import TokenCounter, count_tokens
 from ..prompts import DEFAULT_PROMPTS
+
+if TYPE_CHECKING:
+    from ..config import AgentmakerConfig
+    from ..prompts import PromptRegistry
 
 _logger = logging.getLogger(__name__)   # summary-failure degradation warnings go through it (the library configures no handler; the host takes over, see the NullHandler in agentmaker/__init__)
 
@@ -35,7 +39,8 @@ class HistoryCompactor:
 
     def __init__(self, llm: LLMClient, *, keep_recent: int = 4, trigger_tokens: int = 2000,
                  max_summary_tokens: int = 1000,
-                 summary_prompt: Optional[str] = None, prompts=None, token_counter: TokenCounter = count_tokens):
+                 summary_prompt: Optional[str] = None, prompts: "Optional[PromptRegistry]" = None,
+                 token_counter: TokenCounter = count_tokens):
         """
         Args:
             llm: the LLM used for summarization (a cheap model such as deepseek is recommended).
@@ -80,8 +85,9 @@ class HistoryCompactor:
         self._cache_max = 32
 
     @classmethod
-    def from_config(cls, llm: LLMClient, config, *, summary_prompt: Optional[str] = None,
-                    prompts=None, token_counter: TokenCounter = count_tokens) -> "HistoryCompactor":
+    def from_config(cls, llm: LLMClient, config: "AgentmakerConfig", *, summary_prompt: Optional[str] = None,
+                    prompts: "Optional[PromptRegistry]" = None,
+                    token_counter: TokenCounter = count_tokens) -> "HistoryCompactor":
         """Assemble a HistoryCompactor from an AgentmakerConfig: slice config.compaction (keep_recent / trigger_tokens).
 
         Same mindset as each retrieval class's from_config (set defaults in one place, assemble in one line); the
@@ -99,7 +105,8 @@ class HistoryCompactor:
         return cls(llm, keep_recent=c.keep_recent, trigger_tokens=c.trigger_tokens,
                    summary_prompt=summary_prompt, prompts=prompts, token_counter=token_counter)
 
-    def compact(self, history: List[Message], *, summarize=None) -> List[Message]:
+    def compact(self, history: List[Message], *,
+                summarize: Optional[Callable[[str, str], str]] = None) -> List[Message]:
         """When history exceeds trigger_tokens, compress to [recap (system)] + the most recent keep_recent turns; otherwise return unchanged.
 
         Args:
@@ -122,7 +129,8 @@ class HistoryCompactor:
         self._store(key, len(old), summary)
         return self._assemble(summary, recent, history)
 
-    async def acompact(self, history: List[Message], *, asummarize=None) -> List[Message]:
+    async def acompact(self, history: List[Message], *,
+                       asummarize: Optional[Callable[[str, str], Awaitable[str]]] = None) -> List[Message]:
         """Async version of compact: summarization goes through the asummarize callback (governed via acall_llm if Harness passes it) or the built-in llm.chat (async); splitting / assembly is shared with compact."""
         split = self._split(history)
         if split is None:

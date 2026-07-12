@@ -22,30 +22,56 @@ from agentmaker.runtime.harness import HarnessConfig
 from agentmaker.tools import ToolRegistry
 
 if TYPE_CHECKING:
+    from agentmaker.context import ContextBuilder, ContextSource
+    from agentmaker.context.types import ReducerConfig
+    from agentmaker.context.window_budget import WindowBudgetConfig
+    from agentmaker.prompts import PromptRegistry
+    from agentmaker.retrieval.scope import Scope
+    from agentmaker.runtime.execution.checkpoint import CheckpointStore
+    from agentmaker.runtime.execution.run_policy import RunPolicy
+    from agentmaker.runtime.guardrails import Guardrail
+    from agentmaker.runtime.hooks import Hook
+    from agentmaker.runtime.observability import Tracer
+    from agentmaker.runtime.sessions import SessionStore
     from agentmaker.tools import ConfirmCallback
+    from agentmaker.tools.permissions import ToolPermissions
+    from agentmaker.tools.tool_retriever import ToolRetriever
 
 
 class ReflectionAgent(BaseAgent):
     """Reflection orchestration recipe: draft -> (reflect -> refine) xN, until the critique signals "best reached" or max_turns is hit. Optionally verifies with tools in the critique step."""
 
     def __init__(self, name: str, llm: LLMClient, system_prompt: Optional[str] = None, *,
-                 max_turns: int = 3, tracer=None, hooks=None, run_policy=None, session_store=None, scope=None,
-                 input_guardrails=None, output_guardrails=None,
-                 tool_registry: Optional[ToolRegistry] = None, confirm: "Optional[ConfirmCallback]" = None, permissions=None,
-                 checkpoint_store=None, tool_retriever=None, context_builder=None, sources=None, reducer=None,
-                 window_budget=None, token_counter: TokenCounter = count_tokens, prompts=None):
+                 max_turns: int = 3, tracer: "Optional[Tracer]" = None, hooks: "Optional[list[Hook]]" = None,
+                 run_policy: "Optional[RunPolicy]" = None, session_store: "Optional[SessionStore]" = None,
+                 scope: "Optional[Scope]" = None,
+                 input_guardrails: "Optional[list[Guardrail]]" = None,
+                 output_guardrails: "Optional[list[Guardrail]]" = None,
+                 tool_registry: Optional[ToolRegistry] = None, confirm: "Optional[ConfirmCallback]" = None,
+                 permissions: "Optional[ToolPermissions]" = None,
+                 checkpoint_store: "Optional[CheckpointStore]" = None, tool_retriever: "Optional[ToolRetriever]" = None,
+                 context_builder: "Optional[ContextBuilder]" = None, sources: "Optional[list[ContextSource]]" = None,
+                 reducer: "Optional[ReducerConfig]" = None, window_budget: "Optional[WindowBudgetConfig]" = None,
+                 token_counter: TokenCounter = count_tokens, prompts: "Optional[PromptRegistry]" = None):
         """
         Args:
             max_turns: Maximum number of "reflect-refine" rounds (must be a positive integer; the same name across Agent / PlanAgent / AgentSpec denotes the loop cap).
             tool_registry: Optional tool table; if passed, the critique step can call tools to verify facts / arithmetic. Without it, critique is pure self-reflection.
-            confirm / permissions / checkpoint_store: Passed through to the critique-executor; with a checkpoint_store attached, critique's
-                high-risk tools suspend/resume via HITL (the Reflection main loop propagates the Interrupt upward).
+            confirm: High-risk tool confirmation callback, passed through to the critique-executor.
+            permissions: Tool permissions (allow/deny lists), passed through to the critique-executor.
+            checkpoint_store: Passed through to the critique-executor; once attached, critique's high-risk
+                tools suspend/resume via HITL (the Reflection main loop propagates the Interrupt upward).
             tool_retriever: Passed through to the critique-executor (selects a relevant subset when critique has many tools).
-            context_builder + sources: memory/RAG injection; splices the retrieval block into the prompt in the draft / refine steps (the generation step benefits most).
-            reducer / window_budget: Window-governance knobs, given to Reflection's own Harness (when the reflection trajectory overflows the
-                window it is trimmed against the window budget, keeping the latest answer plus the critique's key points) and also passed
-                through to the critique-executor (whose verification trajectory is likewise bound).
-            Other parameters are the same as BaseAgent.
+            context_builder: Memory/RAG injection; splices the retrieval block into the prompt in the
+                draft / refine steps, where generation benefits most (must be paired with sources).
+            sources: The context sources context_builder retrieves from; required when context_builder is attached.
+            reducer: Trajectory-trimming knob, given to Reflection's own Harness (when the reflection trajectory
+                overflows the window it is trimmed against the window budget, keeping the latest answer plus the
+                critique's key points) and also passed through to the critique-executor.
+            window_budget: Window-accounting knob, wired the same way as reducer (Reflection's own Harness plus
+                the critique-executor, whose verification trajectory is likewise bound).
+
+        Other parameters are the same as BaseAgent.
         """
         # Cross-cutting knobs for Reflection's own harness (confirm/permissions/tool_retriever go only to the critic, not into its own harness).
         cfg = HarnessConfig(tracer=tracer, context_builder=context_builder, sources=sources,

@@ -30,7 +30,7 @@ Structured work inside the loop:
 
 import asyncio
 import json
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from agentmaker.agents.base import BaseAgent
 from agentmaker.core import LLMClient, Message, TokenCounter, count_tokens
@@ -45,7 +45,17 @@ if TYPE_CHECKING:                       # Type hints only; not imported at runti
     from agentmaker.context import ContextBuilder, ContextSource
     from agentmaker.context.history_compactor import HistoryCompactor
     from agentmaker.context.types import ReducerConfig
-    from agentmaker.tools import ConfirmCallback
+    from agentmaker.context.window_budget import WindowBudgetConfig
+    from agentmaker.prompts import PromptRegistry
+    from agentmaker.retrieval.scope import Scope
+    from agentmaker.runtime.execution.checkpoint import CheckpointStore
+    from agentmaker.runtime.execution.run_policy import RunPolicy
+    from agentmaker.runtime.guardrails import Guardrail
+    from agentmaker.runtime.hooks import Hook
+    from agentmaker.runtime.observability import Tracer
+    from agentmaker.runtime.sessions import SessionStore
+    from agentmaker.tools import ConfirmCallback, Tool
+    from agentmaker.tools.permissions import ToolPermissions
     from agentmaker.tools.tool_retriever import ToolRetriever
 
 
@@ -53,21 +63,25 @@ class Agent(BaseAgent):
     """Single-loop Agent: one input -> model-tool loop -> reply; with no tools it is plain question-answering. Automatically maintains multi-turn history per scope."""
 
     def __init__(self, name: str, llm: LLMClient, system_prompt: Optional[str] = None, *,
-                 tools=None,
+                 tools: "Optional[list[Tool] | ToolRegistry]" = None,
                  tool_registry: Optional[ToolRegistry] = None,
                  max_turns: int = 10,
                  compactor: "Optional[HistoryCompactor]" = None,
                  confirm: "Optional[ConfirmCallback]" = None,
-                 permissions=None,
+                 permissions: "Optional[ToolPermissions]" = None,
                  reducer: "Optional[ReducerConfig]" = None,
                  tool_retriever: "Optional[ToolRetriever]" = None,
                  context_builder: "Optional[ContextBuilder]" = None,
                  sources: "Optional[list[ContextSource]]" = None,
-                 window_budget=None,
+                 window_budget: "Optional[WindowBudgetConfig]" = None,
                  token_counter: TokenCounter = count_tokens,
-                 tracer=None, hooks=None, run_policy=None,
-                 session_store=None, scope=None, checkpoint_store=None,
-                 input_guardrails=None, output_guardrails=None, prompts=None,
+                 tracer: "Optional[Tracer]" = None, hooks: "Optional[list[Hook]]" = None,
+                 run_policy: "Optional[RunPolicy]" = None,
+                 session_store: "Optional[SessionStore]" = None, scope: "Optional[Scope]" = None,
+                 checkpoint_store: "Optional[CheckpointStore]" = None,
+                 input_guardrails: "Optional[list[Guardrail]]" = None,
+                 output_guardrails: "Optional[list[Guardrail]]" = None,
+                 prompts: "Optional[PromptRegistry]" = None,
                  on_pending: str = "error", as_child: bool = False):
         """
         Args:
@@ -94,19 +108,28 @@ class Agent(BaseAgent):
                 overflows the window, keep recent units and summarize the earlier ones.
             tool_retriever: Optional Tool-RAG (ToolRetriever); selects only the relevant subset of tools for
                 this turn's input (saves tokens when there are many tools).
-            context_builder + sources: Optional memory/RAG injection; each turn retrieves by input and
-                assembles a guardrailed system block for injection.
+            context_builder: Optional memory/RAG injection (ContextBuilder); each turn retrieves by input
+                and assembles a guardrailed system block for injection (must be paired with sources).
+            sources: The context sources context_builder retrieves from (CallableSource wrapping
+                memory.search / rag.retrieve, etc.); required when context_builder is attached.
             window_budget: Optional window-budgeting knob (WindowBudgetConfig); unifies budgeting across
                 retrieval blocks, trajectory, and output reservation.
             token_counter: Pluggable token counter (default count_tokens); the harness uses it to estimate
                 tool overhead and to trim trajectories. For consistent accounting throughout, pass the same
                 token_counter to your ContextBuilder / HistoryCompactor as well (the Agent does not silently
                 override the counters they already carry).
-            session_store / scope: Session persistence (see BaseAgent); once attached, history is resumed
+            session_store: Session persistence store (see BaseAgent); once attached, history is resumed
                 per scope and persisted automatically.
+            scope: The default session identifier the history is keyed by (see BaseAgent); run / resume
+                can override it per call.
             checkpoint_store: Optional checkpoint store; once attached, enables HITL suspend/resume plus
                 crash recovery (saved at every step).
-            input_guardrails / output_guardrails / hooks / run_policy / prompts / on_pending: see BaseAgent.
+            input_guardrails: See BaseAgent.
+            output_guardrails: See BaseAgent.
+            hooks: See BaseAgent.
+            run_policy: See BaseAgent.
+            prompts: See BaseAgent.
+            on_pending: See BaseAgent.
             as_child: Set True when acting as an orchestration recipe's internal sub-agent (see BaseAgent:
                 run-level hooks do not fire and checkpoint cleanup is left to the parent).
         """
@@ -411,7 +434,8 @@ class Agent(BaseAgent):
 
     # Streaming (plain text, or a streaming tool loop when the agent has tools; no HITL suspend / checkpoints).
 
-    async def astream_run(self, input_text: str, *, scope=None, buffer_output: bool = False, trace_carrier=None, **kwargs):
+    async def astream_run(self, input_text: str, *, scope: "Optional[Scope]" = None, buffer_output: bool = False,
+                          trace_carrier: Optional[dict[str, str]] = None, **kwargs: Any):
         """Streaming question-answering (the real async implementation): yields reply text piece by piece.
 
         Shares the base `_scaffold` (run context with scope + run-level hooks + exception routing). The

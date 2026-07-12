@@ -20,7 +20,7 @@ import copy
 import weakref
 from contextlib import asynccontextmanager
 from dataclasses import fields, replace
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from ..core.exceptions import GuardrailTripwireError, SessionError
 from ..core.llm_clients import LLMClient
@@ -34,6 +34,7 @@ from ..runtime.execution.run_context import (current_run_id, current_step, new_r
 
 if TYPE_CHECKING:                       # Type annotations only; not imported at runtime (cross-subsystem, avoids potential cycles)
     from .result import RunResult
+    from ..prompts import PromptRegistry
     from ..runtime.execution.checkpoint import CheckpointStore
     from ..runtime.execution.run_policy import RunPolicy
     from ..runtime.guardrails import Guardrail
@@ -57,7 +58,7 @@ class BaseAgent:
                  hooks: "Optional[list[Hook]]" = None,
                  run_policy: "Optional[RunPolicy]" = None,
                  harness_config: "Optional[HarnessConfig]" = None,
-                 prompts=None, on_pending: str = "error", as_child: bool = False):
+                 prompts: "Optional[PromptRegistry]" = None, on_pending: str = "error", as_child: bool = False):
         """
         Store the agent's core dependencies and initialize conversation history (loading and resuming from session_store if one is attached).
 
@@ -75,7 +76,7 @@ class BaseAgent:
             checkpoint_store: Optional execution-state checkpoint store (CheckpointStore,
                 agentmaker.runtime.execution). Attaching one enables execution-state persistence,
                 shared across three use cases: (1) HITL async approval (high-risk tools suspend, run
-                returns an Interrupt, resume(decision) continues); (2) crash recovery / (3) long-task
+                returns an interrupted RunResult, resume(decision) continues); (2) crash recovery / (3) long-task
                 resume (a checkpoint is saved each step, resume() continues after a process restart).
                 Strategies that support resume implement `_adrive`.
             input_guardrails: Optional list of input guardrails. Checked against user input before
@@ -167,17 +168,19 @@ class BaseAgent:
 
     # -- run / resume template (async is the real body, sync is an aio facade) --
 
-    async def arun(self, input_text: str, *, scope=None, trace_carrier=None, **kwargs):
+    async def arun(self, input_text: str, *, scope: "Optional[Scope]" = None,
+                   trace_carrier: Optional[dict[str, str]] = None, **kwargs: Any) -> "RunResult":
         """Process one input and return a reply (template method: the run boundary shared by all strategies):
         input guardrails -> strategy logic `_arun` -> output guardrails -> persist history.
 
         Subclasses only implement `_arun` (pure generation); this method funnels the "run boundary"
         cross-cutting concerns (guardrails and history persistence) so every strategy gets them for
         free, mirroring the OpenAI Agents SDK where guardrails are declared on the agent and enforced
-        by a single execution layer (rather than reimplemented in each strategy). The return type
-        matches `_arun` (usually str; a validated model instance when output_schema is passed; an
-        Interrupt on HITL suspend, in which case history is not persisted, the state has already been
-        saved into the CheckpointStore by the strategy, awaiting resume).
+        by a single execution layer (rather than reimplemented in each strategy). Returns a RunResult
+        envelope: final_output carries `_arun`'s output (usually str; a validated model instance when
+        output_schema is passed); on HITL suspend the result is interrupted (.interrupt carries the
+        pending actions), history is not persisted, and the state has already been saved into the
+        CheckpointStore by the strategy, awaiting resume.
 
         Args:
             input_text: The user's raw input text.
@@ -205,7 +208,8 @@ class BaseAgent:
             await afire(self.hooks, "on_run_end", output, scope=scope)   # Hooks still receive the bare output (observe-only)
             return self._pack_completed(output, input_text)
 
-    def run(self, input_text: str, *, scope=None, trace_carrier=None, **kwargs):
+    def run(self, input_text: str, *, scope: "Optional[Scope]" = None,
+            trace_carrier: Optional[dict[str, str]] = None, **kwargs: Any) -> "RunResult":
         """Synchronous facade over arun (driven by aio.run_sync). In environments with a running event loop (async / Jupyter / FastAPI), await arun instead."""
         return run_sync(self.arun(input_text, scope=scope, trace_carrier=trace_carrier, **kwargs))
 
@@ -309,7 +313,8 @@ class BaseAgent:
 
     # -- Checkpoint resume (funneled in the base; strategies only implement _adrive: driving their own loop from ExecutionState) --
 
-    async def aresume(self, decision: Optional[bool] = None, *, scope=None, trace_carrier=None, **kwargs):
+    async def aresume(self, decision: Optional[bool | dict[str, bool]] = None, *, scope: "Optional[Scope]" = None,
+                      trace_carrier: Optional[dict[str, str]] = None, **kwargs: Any) -> "RunResult":
         """Resume an unfinished run from a checkpoint: reload the execution state -> (for HITL) inject the decision -> continue from the breakpoint.
 
         Two kinds of resume share this entry:
@@ -317,11 +322,12 @@ class BaseAgent:
           (False) skips it and feeds the result back so the model reroutes.
         - Crash recovery / long-task resume: `decision` is omitted (None). No decision is injected;
           it simply continues from the last checkpoint (a suspended high-risk action re-suspends and
-          returns an Interrupt awaiting approval again, rather than being mistaken for a rejection).
+          is returned as an interrupted RunResult awaiting approval again, rather than being mistaken
+          for a rejection).
 
         Funneled in the base: reload ExecutionState -> (as needed) inject the decision -> call the
         strategy's `_adrive` to continue -> teardown (on completion: output guardrails + persist
-        history + clear checkpoint; on re-suspend: return a new Interrupt). Input guardrails are not
+        history + clear checkpoint; on re-suspend: repack as an interrupted RunResult). Input guardrails are not
         re-checked (the first run already checked them); it does not go through `_scaffold`, so resume
         continues the run_id / step from before the suspend and does not re-fire on_run_start.
 
@@ -336,8 +342,8 @@ class BaseAgent:
             **kwargs: Passed through to the strategy's `_adrive`.
 
         Returns:
-            str (the final reply, and history persisted) or Interrupt (a high-risk action is still
-            awaiting approval during resume, re-suspended).
+            RunResult: completed (the final reply in final_output, history persisted) or interrupted
+                (a high-risk action re-suspended during resume, still awaiting approval).
         """
         if decision is not None and not isinstance(decision, (bool, dict)):
             raise TypeError(
@@ -362,7 +368,8 @@ class BaseAgent:
             finally:
                 reset_run(token)
 
-    def resume(self, decision: Optional[bool] = None, *, scope=None, trace_carrier=None, **kwargs):
+    def resume(self, decision: Optional[bool | dict[str, bool]] = None, *, scope: "Optional[Scope]" = None,
+               trace_carrier: Optional[dict[str, str]] = None, **kwargs: Any) -> "RunResult":
         """Synchronous facade over aresume (driven by aio.run_sync)."""
         return run_sync(self.aresume(decision, scope=scope, trace_carrier=trace_carrier, **kwargs))
 
@@ -589,7 +596,7 @@ class BaseAgent:
         """
         return []
 
-    async def clear_checkpoint(self, scope=None) -> None:
+    async def clear_checkpoint(self, scope: "Optional[Scope]" = None) -> None:
         """Explicitly clear a scope's checkpoint (ignoring the defer flag), and cascade-clear the internal sub-agents' derived child-scope checkpoints.
 
         For a parent strategy to clean up sub-agent checkpoints after committing its own progress, and
@@ -652,7 +659,7 @@ class BaseAgent:
                 state.decisions[call_id] = bool(decision)
 
     async def _finish_resume(self, output, state, scope):
-        """Resume teardown: on re-suspend, fire on_interrupt and return as-is; on completion, `_record` (output guardrails + persist history) + clear checkpoint + fire on_run_end.
+        """Resume teardown: on re-suspend, fire on_interrupt and repack as an interrupted RunResult; on completion, `_record` (output guardrails + persist history) + clear checkpoint + fire on_run_end.
 
         The order matches run: `_record` first, then clear the checkpoint, so that if an output
         guardrail trips / persistence fails, the checkpoint is not lost and can be resumed again.
@@ -681,7 +688,7 @@ class BaseAgent:
             return await self.session_store.aload(scope=scope)
         return self._sessions.setdefault(scope, [])
 
-    async def add_message(self, message: Message, scope=None):
+    async def add_message(self, message: Message, scope: "Optional[Scope]" = None) -> None:
         """Append one message to the conversation history by scope (a single-message convenience over add_messages).
 
         Args:
@@ -690,7 +697,7 @@ class BaseAgent:
         """
         await self.add_messages([message], scope)
 
-    async def add_messages(self, messages: list[Message], scope=None):
+    async def add_messages(self, messages: list[Message], scope: "Optional[Scope]" = None) -> None:
         """Append multiple messages to the conversation history by scope atomically; with a
         session_store it goes through its aappend_many (single transaction, avoiding a half-turn),
         otherwise the in-process dict[scope] is extended once. This is the single funnel point for
@@ -711,7 +718,7 @@ class BaseAgent:
         else:
             self._sessions.setdefault(scope, []).extend(messages)
 
-    def clear_history(self, scope=None):
+    def clear_history(self, scope: "Optional[Scope]" = None) -> None:
         """Clear a scope's conversation history; with a session_store, clear its persisted record, otherwise clear the in-process dict[scope].
 
         Args:
@@ -723,7 +730,7 @@ class BaseAgent:
         else:
             self._sessions.pop(scope, None)
 
-    def get_history(self, scope=None) -> list[Message]:
+    def get_history(self, scope: "Optional[Scope]" = None) -> list[Message]:
         """Return a deep copy of a scope's conversation history, so external mutations (including changing a Message's content / metadata) do not affect internal state.
 
         Args:

@@ -12,7 +12,7 @@ import json
 import threading
 import time
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Callable, Optional
 
 from ...core.clock import now_utc
 from ...core.sqlite_util import ensure_columns, open_sqlite
@@ -131,7 +131,8 @@ class OTelExporter(TraceExporter):
     only accept primitive types).
     """
 
-    def __init__(self, tracer_name: str = "agentmaker", *, carrier_provider=None):
+    def __init__(self, tracer_name: str = "agentmaker", *,
+                 carrier_provider: Optional[Callable[[], Optional[dict]]] = None):
         """Obtain an OTel tracer.
 
         Args:

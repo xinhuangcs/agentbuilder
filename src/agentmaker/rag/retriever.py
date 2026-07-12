@@ -18,7 +18,7 @@ after a hit the context is expanded into a neighbor window to give the LLM fulle
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from ..core.exceptions import RunCancelled, RunLimitExceeded
 from ..core.llm_clients import LLMClient
@@ -27,10 +27,16 @@ from ..core.aio import run_sync
 from ..runtime.execution.run_context import correlation, governed_chat
 from ..retrieval.hybrid import HybridRetriever, reciprocal_rank_fusion
 from ..retrieval.scope import Scope
-from ..retrieval.types import RetrievalConfig, RetrievalResult
+from ..retrieval.types import MetadataFilter, RetrievalConfig, RetrievalResult
 from .source_store import SourceStore
 from .types import AskResult, RagConfig, SourceRef
 from ..core.trace_events import EVENT_RAG_QUERY_TRANSFORM_FAILED, EVENT_RAG_RETRIEVE
+
+if TYPE_CHECKING:
+    from ..config import AgentmakerConfig
+    from ..prompts import PromptRegistry
+    from ..retrieval.base import Embedder, Reranker
+    from ..runtime.observability import Tracer
 
 
 # Default anti-hallucination system prompt for ask; the framework only provides the mechanism,
@@ -165,7 +171,8 @@ class ChunkExpander(ABC):
     """Abstract base for post-retrieval expansion: expand a hit's small chunk into a fuller context."""
 
     @abstractmethod
-    def expand(self, results: List[RetrievalResult], *, source_store, scope=None) -> List[RetrievalResult]:
+    def expand(self, results: List[RetrievalResult], *, source_store: SourceStore,
+               scope: Optional[Scope] = None) -> List[RetrievalResult]:
         """Expand a batch of hits and return the expanded results (preserving the relevance-ordered input order).
 
         Args:
@@ -192,7 +199,8 @@ class NeighborWindowExpander(ChunkExpander):
             raise ValueError(f"window must be >= 1, got {window}")
         self.window = window
 
-    def expand(self, results, *, source_store, scope=None):
+    def expand(self, results: List[RetrievalResult], *, source_store: SourceStore,
+               scope: Optional[Scope] = None) -> List[RetrievalResult]:
         """For each hit, take neighbor chunks [idx-window, idx+window] and merge by idx; deduplicate across hits by (doc_id, idx)."""
         used = set()                                    # (doc_id, idx) pairs already assigned.
         out = []
@@ -221,8 +229,9 @@ class RagRetriever:
     def __init__(self, retriever: HybridRetriever, source_store: SourceStore,
                  llm: LLMClient, *, scope: Optional[Scope] = None, system_prompt: Optional[str] = None,
                  query_transformer: Optional[QueryTransformer] = None,
-                 config: Optional[RetrievalConfig] = None, rag_config: Optional[RagConfig] = None, prompts=None,
-                 expander=None, tracer=None):
+                 config: Optional[RetrievalConfig] = None, rag_config: Optional[RagConfig] = None,
+                 prompts: "Optional[PromptRegistry]" = None,
+                 expander: Optional[ChunkExpander] = None, tracer: "Optional[Tracer]" = None):
         """
         Args:
             retriever: Retrieval backend (vector + keyword + RRF + optional rerank).
@@ -259,10 +268,12 @@ class RagRetriever:
         self.rag_cfg = rag_config or RagConfig()      # mq_pool_factor / mq_max_queries
 
     @classmethod
-    def from_config(cls, config, *, embedder=None, retriever: Optional[HybridRetriever] = None,
+    def from_config(cls, config: "AgentmakerConfig", *, embedder: "Optional[Embedder]" = None,
+                    retriever: Optional[HybridRetriever] = None,
                     source_store: Optional[SourceStore] = None, llm: Optional[LLMClient] = None,
-                    db_path: str = ":memory:", reranker=None,
-                    query_transformer: Optional[QueryTransformer] = None, prompts=None) -> "RagRetriever":
+                    db_path: str = ":memory:", reranker: "Optional[Reranker]" = None,
+                    query_transformer: Optional[QueryTransformer] = None,
+                    prompts: "Optional[PromptRegistry]" = None) -> "RagRetriever":
         """Assemble a RagRetriever (read-only) from an AgentmakerConfig in one line: uses the sqlite backend by default; pass retriever / source_store to inject a custom backend.
 
         The backend is pluggable, same as Memory.from_config (the assembly root is in the app).
@@ -274,8 +285,8 @@ class RagRetriever:
             config: AgentmakerConfig (reads config.retrieval / config.rag).
             embedder: Required when using the default sqlite backend; not needed if retriever is
                 injected.
-            retriever / source_store: Inject a custom backend; if omitted a default sqlite one is
-                built.
+            retriever: Inject a custom retrieval backend; if omitted a default sqlite one is built.
+            source_store: Inject a custom source-of-truth store; if omitted a default sqlite one is built.
             llm: Used to generate answers; can be omitted if you only retrieve without asking.
 
         Example:
@@ -292,7 +303,7 @@ class RagRetriever:
                    query_transformer=query_transformer, config=config.retrieval, rag_config=config.rag, prompts=prompts)
 
     def retrieve(self, query: str, *, top_k: Optional[int] = None, scope: Optional[Scope] = None,
-                 filters=None) -> List[RetrievalResult]:
+                 filters: Optional[List[MetadataFilter]] = None) -> List[RetrievalResult]:
         """Retrieve the most relevant chunks; after a hit, go back to the source-of-truth store to fill in complete information such as heading_path / doc_id.
 
         Args:
@@ -342,7 +353,8 @@ class RagRetriever:
                               "latency_ms": int((_time.perf_counter() - t0) * 1000), **correlation()})
         return results
 
-    def _search(self, query: str, *, top_k: int, scope: Scope, filters=None) -> List[RetrievalResult]:
+    def _search(self, query: str, *, top_k: int, scope: Scope,
+                filters: Optional[List[MetadataFilter]] = None) -> List[RetrievalResult]:
         """Backend retrieval; if a query_transformer is attached, expand the query into several, embed them in a single batch, search each, then fuse back down to top_k."""
         fkw = {"filters": filters} if filters else {}   # Only pass when given (do not force an injected stub / custom backend to grow a filters parameter).
         # The candidate pool must be >= top_k, otherwise the backend's require_valid_top_k raises
@@ -370,7 +382,8 @@ class RagRetriever:
         """Async version of retrieve (to_thread; the embedding network call does not block the event loop). Same parameters as retrieve."""
         return await asyncio.to_thread(lambda: self.retrieve(query, **kwargs))
 
-    async def ask(self, query: str, *, top_k: Optional[int] = None, scope: Optional[Scope] = None, filters=None) -> "AskResult":
+    async def ask(self, query: str, *, top_k: Optional[int] = None, scope: Optional[Scope] = None,
+                  filters: Optional[List[MetadataFilter]] = None) -> "AskResult":
         """RAG question answering (non-streaming, async): retrieve -> assemble context -> LLM generation. Returns AskResult(answer, sources).
 
         Retrieval goes through aretrieve (does not block the event loop), then awaits chat
@@ -395,7 +408,8 @@ class RagRetriever:
                                       tracer=self.tracer, origin="rag.ask")).content
         return AskResult(answer=answer, sources=self._sources(chunks))
 
-    async def ask_stream(self, query: str, *, top_k: Optional[int] = None, scope: Optional[Scope] = None, filters=None):
+    async def ask_stream(self, query: str, *, top_k: Optional[int] = None, scope: Optional[Scope] = None,
+                         filters: Optional[List[MetadataFilter]] = None):
         """RAG question answering (streaming, async): yield the answer text piece by piece (consume with async for). Sources can be obtained separately via retrieve before / after.
 
         Retrieval goes through aretrieve, then yields piece by piece with async for (using

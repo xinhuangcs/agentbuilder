@@ -28,13 +28,17 @@ import asyncio
 import hashlib
 import json
 import re
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from ...core.exceptions import ToolError
 from ...prompts import DEFAULT_PROMPTS
 from ..base import Tool, ToolParameter
 from ..registry import sanitize_tool_name
 from ..response import ToolResponse
+
+if TYPE_CHECKING:
+    import httpx
+    from ...prompts import PromptRegistry
 
 # Sanitizing text from external sources: strip control characters (keep \t \n \r) to prevent MCP descriptions
 # from hiding control characters or overwhelming the context with overly long descriptions.
@@ -79,10 +83,10 @@ class MCPClient:
 
     def __init__(self, command: Optional[str] = None, args: Optional[List[str]] = None, *,
                  namespace: str, env: Optional[dict] = None,
-                 url: Optional[str] = None, headers: Optional[dict] = None, auth=None,
+                 url: Optional[str] = None, headers: Optional[dict] = None, auth: "Optional[httpx.Auth]" = None,
                  requires_confirmation: bool = True, max_desc_chars: int = 4096,
                  expected_fingerprints: Optional[dict] = None, timeout: Optional[float] = 30.0,
-                 prompts=None):
+                 prompts: "Optional[PromptRegistry]" = None):
         """Configure an MCP server connection over exactly one transport.
 
         Pick one transport: for a local subprocess pass command (plus optional args/env), for a remote server pass

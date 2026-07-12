@@ -9,11 +9,14 @@ Keys are read from environment variables: TAVILY_API_KEY / BRAVE_API_KEY / SERPA
 """
 
 import os
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from ...prompts import DEFAULT_PROMPTS
 from ..base import Tool, ToolParameter
 from ..response import ToolResponse
+
+if TYPE_CHECKING:
+    from ...prompts import PromptRegistry
 
 # Fallback order: each item is (source_name, method_name); change the order here.
 # Balancing "free first but quality-preserving": Tavily has a large free quota (1000/month),
@@ -33,7 +36,7 @@ class SearchTool(Tool):
     external_content = True   # Search results are external content (attackers can manipulate them via SEO): wrap them with an anti-injection delimiter guardrail before feeding them back to the model.
     supports_parallel = True  # Read-only with no shared mutable state (each call issues an independent HTTP request): the model can run multiple searches in one turn concurrently.
 
-    def __init__(self, max_results: int = 5, *, prompts=None):
+    def __init__(self, max_results: int = 5, *, prompts: "Optional[PromptRegistry]" = None):
         """
         Args:
             max_results: Maximum number of results returned per call.

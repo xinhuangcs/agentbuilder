@@ -35,7 +35,7 @@ class ScriptedLLM:
     contract mirrors LLMClient: provider / model / supports_function_calling / context_window / chat / stream.
     """
 
-    def __init__(self, script=None, *, model: str = "test", provider: str = "test",
+    def __init__(self, script: Optional[List[str | LLMResponse]] = None, *, model: str = "test", provider: str = "test",
                  supports_function_calling: bool = True, context_window: Optional[int] = None):
         """
         Args:

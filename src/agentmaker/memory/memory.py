@@ -17,7 +17,7 @@ via rebuild_index or read-time self-heal.
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import List, Optional, Sequence
+from typing import TYPE_CHECKING, List, Optional, Sequence
 
 from ..core.clock import now_utc
 from ..core.exceptions import RetrievalError
@@ -26,8 +26,14 @@ from ..runtime.execution.run_context import correlation, governed_chat
 from ..retrieval.hybrid import HybridRetriever
 from ..retrieval.scope import Scope
 from ..retrieval.index_sync import IndexSync, SyncIndexSync
-from ..retrieval.types import RetrievalResult
+from ..retrieval.types import MetadataFilter, RetrievalResult
 from .store import MemoryStore
+
+if TYPE_CHECKING:
+    from ..config import AgentmakerConfig
+    from ..retrieval.base import Embedder, Reranker
+    from ..retrieval.types import RetrievalConfig
+    from ..runtime.observability import Tracer
 from .types import MemoryConfig, MemoryItem
 from ..core.trace_events import EVENT_MEMORY_SEARCH
 
@@ -48,7 +54,7 @@ class Memory:
     def __init__(self, retriever: HybridRetriever, store: MemoryStore, *,
                  llm: Optional[LLMClient] = None, scope: Optional[Scope] = None,
                  config: Optional[MemoryConfig] = None, index_sync: Optional[IndexSync] = None,
-                 tracer=None):
+                 tracer: "Optional[Tracer]" = None):
         """Initialize the memory manager.
 
         Args:
@@ -78,10 +84,13 @@ class Memory:
         self._sync = index_sync if index_sync is not None else SyncIndexSync(retriever, tracer=tracer)
 
     @classmethod
-    def from_config(cls, config, *, embedder=None, retriever: Optional[HybridRetriever] = None,
+    def from_config(cls, config: "AgentmakerConfig", *, embedder: "Optional[Embedder]" = None,
+                    retriever: Optional[HybridRetriever] = None,
                     store: Optional[MemoryStore] = None, llm: Optional[LLMClient] = None,
-                    db_path: str = ":memory:", reranker=None, scope: Optional[Scope] = None,
-                    retrieval=None, index_sync: Optional[IndexSync] = None, tracer=None) -> "Memory":
+                    db_path: str = ":memory:", reranker: "Optional[Reranker]" = None,
+                    scope: Optional[Scope] = None,
+                    retrieval: "Optional[RetrievalConfig]" = None, index_sync: Optional[IndexSync] = None,
+                    tracer: "Optional[Tracer]" = None) -> "Memory":
         """Assemble a Memory in one line from an AgentmakerConfig: defaults to the sqlite backend; pass retriever / store to inject a custom backend (without touching framework source).
 
         Pluggable backends follow the "assembly root lives in the app" principle (the library does not
@@ -277,7 +286,8 @@ class Memory:
     def search(self, query: str, *, top_k: Optional[int] = None, scope: Optional[Scope] = None,
                relevance_weight: Optional[float] = None, recency_weight: Optional[float] = None,
                importance_weight: Optional[float] = None,
-               recency_halflife_hours: Optional[float] = None, filters=None) -> List[RetrievalResult]:
+               recency_halflife_hours: Optional[float] = None,
+               filters: Optional[List[MetadataFilter]] = None) -> List[RetrievalResult]:
         """Recall the most relevant memories for a query, ranked by a combined relevance x recency x importance score.
 
         Inspired by Generative Agents: the final score = each component normalized to 0..1 then weighted

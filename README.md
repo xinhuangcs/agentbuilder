@@ -31,7 +31,7 @@ A general-purpose Python framework for building LLM agents and multi-agent syste
 ## Installation
 
 ```bash
-pip install agentmaker            # core batteries, works out of the box
+pip install agentmaker
 pip install "agentmaker[all]"     # every optional extra below
 ```
 

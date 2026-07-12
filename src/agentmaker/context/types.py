@@ -10,7 +10,7 @@ import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import List, Mapping, Optional
+from typing import Any, List, Mapping, Optional
 
 from ..retrieval.types import RetrievalResult
 
@@ -75,7 +75,7 @@ class ContextConfig:
 
     @classmethod
     def for_window(cls, context_window: Optional[int], *, use_ratio: float = 0.5,
-                   fallback_window: Optional[int] = None, **kwargs) -> "ContextConfig":
+                   fallback_window: Optional[int] = None, **kwargs: Any) -> "ContextConfig":
         """Derive the budget from the model's real context window (max_tokens = window * use_ratio) so the
         budget tracks the real window instead of being hard-coded.
 

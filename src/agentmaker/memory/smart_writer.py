@@ -7,12 +7,16 @@ execute. Keeps memory clean, non-duplicated, and non-contradictory.
 
 import asyncio
 import json
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from ..core.llm_clients import LLMClient
 from ..prompts import DEFAULT_PROMPTS
 from ..runtime.execution.run_context import governed_chat
 from .memory import Memory
+
+if TYPE_CHECKING:
+    from ..prompts import PromptRegistry
+    from ..runtime.observability import Tracer
 
 
 # Default prompts now come from the central registry agentmaker.prompts (single source of truth); these two
@@ -45,8 +49,9 @@ class SmartWriter:
     """Mem0-style smart writing: extract facts -> compare against existing memories -> decide ADD/UPDATE/DELETE/NOOP -> execute."""
 
     def __init__(self, memory: Memory, llm: LLMClient, *, similar_k: Optional[int] = None, fail_open: bool = True,
-                 extract_prompt: Optional[str] = None, reconcile_prompt: Optional[str] = None, prompts=None,
-                 tracer=None):
+                 extract_prompt: Optional[str] = None, reconcile_prompt: Optional[str] = None,
+                 prompts: "Optional[PromptRegistry]" = None,
+                 tracer: "Optional[Tracer]" = None):
         """Initialize the smart writer.
 
         Args:

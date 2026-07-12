@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Complete type annotations across the public API.
+
 ## 0.1.0
 
 Initial public release.

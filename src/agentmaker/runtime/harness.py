@@ -25,7 +25,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from ..core.exceptions import LLMResponseError, RunCancelled, RunLimitExceeded
 from ..core.llm_clients import LLMClient
@@ -40,14 +40,17 @@ from ..tools.registry import ToolRegistry
 from ..tools.response import ToolResponse
 
 if TYPE_CHECKING:                       # Type annotations only, not imported at runtime (keeps the harness from dragging in the context / retrieval / tool sub-stacks)
+    from pydantic import BaseModel
     from ..context.builder import ContextBuilder
     from ..context.history_compactor import HistoryCompactor
     from ..context.types import ContextSource, ReducerConfig
     from ..context.window_budget import WindowBudgetConfig
     from ..core.llm_response import LLMResponse
+    from ..prompts import PromptRegistry
     from ..tools.base import ConfirmCallback
     from ..tools.permissions import ToolPermissions
     from ..tools.tool_retriever import ToolRetriever
+    from .hooks import Hook
     from .observability import Tracer
 
 _logger = logging.getLogger(__name__)   # Warnings about truncated LLM output go here (the library installs no handler, the host takes over; see the NullHandler in agentmaker/__init__)
@@ -122,9 +125,12 @@ class Harness:
     """The Agent's cross-cutting services: acall_llm / aexec_tool / trace, shared across paradigms."""
 
     def __init__(self, llm: LLMClient, *, tool_registry: Optional[ToolRegistry] = None,
-                 confirm: "Optional[ConfirmCallback]" = None, tracer=None, permissions=None, hooks=None,
-                 compactor=None, tool_retriever=None, context_builder=None, sources=None, reducer=None,
-                 window_budget=None, prompts=None, token_counter: TokenCounter = count_tokens):
+                 confirm: "Optional[ConfirmCallback]" = None, tracer: "Optional[Tracer]" = None,
+                 permissions: "Optional[ToolPermissions]" = None, hooks: "Optional[list[Hook]]" = None,
+                 compactor: "Optional[HistoryCompactor]" = None, tool_retriever: "Optional[ToolRetriever]" = None,
+                 context_builder: "Optional[ContextBuilder]" = None, sources: "Optional[list[ContextSource]]" = None,
+                 reducer: "Optional[ReducerConfig]" = None, window_budget: "Optional[WindowBudgetConfig]" = None,
+                 prompts: "Optional[PromptRegistry]" = None, token_counter: TokenCounter = count_tokens):
         """
         Args:
             llm: The LLM client.
@@ -251,7 +257,8 @@ class Harness:
                 self._warn_if_truncated(stats)                   # Warn on streaming truncation too (consistent with non-streaming; stats carries finish_reason)
         enforce_token_limit_after_llm()                          # Check the limit only on a normal drain (on an early-break GeneratorExit this line is not reached after finally)
 
-    async def astructured(self, messages, schema_model, *, retries=_DEFAULT_STRUCTURED_RETRIES, **kwargs):
+    async def astructured(self, messages: "list[dict]", schema_model: "type[BaseModel]", *,
+                          retries: int = _DEFAULT_STRUCTURED_RETRIES, **kwargs: Any) -> "BaseModel":
         """Make the model output a structured result per a pydantic model: inject the schema, call the LLM, pydantic-validate,
         feed failures back and retry, return the instance. The cross-cutting implementation (single async copy).
 
@@ -434,7 +441,7 @@ class Harness:
                         "sources": len(self.sources), "latency_ms": int((time.perf_counter() - start) * 1000)})
         return self.prompts.text("harness.context_guard") + block if block else ""
 
-    async def areduce(self, kind: str, data, **kw):
+    async def areduce(self, kind: str, data, **kw: Any):
         """Loss-aware reduction of a paradigm's own trajectory (acts only when over budget; emits a trace if reduction happens). kind: agent / plan / reflection.
         The cross-cutting implementation (single async copy): the reduction functions (REDUCERS) are natively async, and the summary
         callback is _asummarize (completes within the same event loop, with no thread / loop hopping, so governance counting and

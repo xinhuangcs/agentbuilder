@@ -27,7 +27,20 @@ from agentmaker.runtime.harness import HarnessConfig
 from agentmaker.tools import ToolRegistry
 
 if TYPE_CHECKING:
+    from agentmaker.context import ContextBuilder, ContextSource
+    from agentmaker.context.types import ReducerConfig
+    from agentmaker.context.window_budget import WindowBudgetConfig
+    from agentmaker.prompts import PromptRegistry
+    from agentmaker.retrieval.scope import Scope
+    from agentmaker.runtime.execution.checkpoint import CheckpointStore
+    from agentmaker.runtime.execution.run_policy import RunPolicy
+    from agentmaker.runtime.guardrails import Guardrail
+    from agentmaker.runtime.hooks import Hook
+    from agentmaker.runtime.observability import Tracer
+    from agentmaker.runtime.sessions import SessionStore
     from agentmaker.tools import ConfirmCallback
+    from agentmaker.tools.permissions import ToolPermissions
+    from agentmaker.tools.tool_retriever import ToolRetriever
 
 
 class PlanSteps(BaseModel):
@@ -40,23 +53,36 @@ class PlanAgent(BaseAgent):
 
     def __init__(self, name: str, llm: LLMClient, system_prompt: Optional[str] = None, *,
                  tool_registry: Optional[ToolRegistry] = None,
-                 max_turns: int = 3, confirm: "Optional[ConfirmCallback]" = None, tracer=None,
-                 permissions=None, hooks=None, run_policy=None, session_store=None, scope=None, checkpoint_store=None,
-                 input_guardrails=None, output_guardrails=None,
-                 tool_retriever=None, context_builder=None, sources=None, reducer=None, window_budget=None,
-                 token_counter: TokenCounter = count_tokens, prompts=None):
+                 max_turns: int = 3, confirm: "Optional[ConfirmCallback]" = None, tracer: "Optional[Tracer]" = None,
+                 permissions: "Optional[ToolPermissions]" = None, hooks: "Optional[list[Hook]]" = None,
+                 run_policy: "Optional[RunPolicy]" = None, session_store: "Optional[SessionStore]" = None,
+                 scope: "Optional[Scope]" = None, checkpoint_store: "Optional[CheckpointStore]" = None,
+                 input_guardrails: "Optional[list[Guardrail]]" = None,
+                 output_guardrails: "Optional[list[Guardrail]]" = None,
+                 tool_retriever: "Optional[ToolRetriever]" = None,
+                 context_builder: "Optional[ContextBuilder]" = None,
+                 sources: "Optional[list[ContextSource]]" = None, reducer: "Optional[ReducerConfig]" = None,
+                 window_budget: "Optional[WindowBudgetConfig]" = None,
+                 token_counter: TokenCounter = count_tokens, prompts: "Optional[PromptRegistry]" = None):
         """
         Args:
             system_prompt: Optional extra persona for the planning stage (third positional arg, aligned with Agent / ReflectionAgent).
             tool_registry: If passed, every execution step can call tools; without it, execution is pure reasoning (keyword-only).
             max_turns: Upper bound on the tool-loop turns for each sub-step executor (the internal single-loop Agent), default 3 (not the number of plan steps).
-            tool_retriever / context_builder / sources: Context engineering, passed through to each step's executor; the Plan's own
-                planning and synthesis calls also inject a memory/RAG block.
-            confirm / permissions / checkpoint_store: Passed through to the executor; with a checkpoint_store attached, high-risk tools
-                during a step suspend/resume via HITL (the Plan main loop catches and propagates the Interrupt upward).
-            reducer / window_budget: Window-governance knobs, given to Plan's own Harness (when history overflows the window it is trimmed
-                against the window budget) and also passed through to each step's executor (whose tool-trajectory trimming is likewise bound by these two knobs).
-            Other parameters are the same as BaseAgent.
+            tool_retriever: Tool-RAG, passed through to each step's executor (selects the relevant tool subset per step).
+            context_builder: Memory/RAG injection, passed through to each step's executor; the Plan's own
+                planning and synthesis calls also inject the memory/RAG block (must be paired with sources).
+            sources: The context sources context_builder retrieves from; required when context_builder is attached.
+            confirm: High-risk tool confirmation callback, passed through to the executor.
+            permissions: Tool permissions (allow/deny lists), passed through to the executor.
+            checkpoint_store: Passed through to the executor; once attached, high-risk tools during a step
+                suspend/resume via HITL (the Plan main loop catches and propagates the Interrupt upward).
+            reducer: Trajectory-trimming knob, given to Plan's own Harness (when history overflows the window
+                it is trimmed against the window budget) and also passed through to each step's executor.
+            window_budget: Window-accounting knob, wired the same way as reducer (Plan's own Harness plus each
+                step's executor, whose tool-trajectory trimming is likewise bound).
+
+        Other parameters are the same as BaseAgent.
         """
         # Cross-cutting knobs for Plan's own harness (no tool_retriever / compactor, those belong to the executor).
         cfg = HarnessConfig(tracer=tracer, confirm=confirm, permissions=permissions,

@@ -19,15 +19,15 @@ import re
 import sqlite3
 import threading
 from contextlib import contextmanager
-from typing import Optional
+from typing import Optional, Sequence
 
 from ...core.exceptions import RetrievalError
 from ...core.sqlite_util import open_sqlite, require_ddl_contains
-from ..base import Embedder, KeywordIndex, Reranker, VectorStore
+from ..base import Embedder, FusionStrategy, KeywordIndex, Reranker, VectorStore
 from ..hybrid import HybridRetriever, require_valid_top_k
 from ..scope import Scope, require_explicit_scope
 from ..scope_sql import scope_column_names, scope_exact_where, scope_store_values, scope_where
-from ..types import RetrievalResult
+from ..types import RetrievalConfig, RetrievalResult
 
 # Valid SQL identifier: starts with a letter / underscore, contains only letters / digits / underscores.
 _IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -510,7 +510,8 @@ def _check_embedder_fingerprint(conn, vec_table: str, embedder: Embedder) -> Non
 
 def build_sqlite_hybrid(embedder: Embedder, *, db_path: str = ":memory:", reranker: Optional[Reranker] = None,
                         vec_table: str = "vec_items", kw_table: str = "kw_items",
-                        config=None, metadata_columns=(), fusion=None) -> SqliteHybridRetriever:
+                        config: Optional[RetrievalConfig] = None, metadata_columns: Sequence[str] = (),
+                        fusion: Optional[FusionStrategy] = None) -> SqliteHybridRetriever:
     """Convenience constructor: the vector store + keyword index share one SQLite connection -> add / delete is atomic across both indexes in a single transaction.
 
     The recommended local construction: compared to two stores each with their own exclusive connection (where writes
@@ -523,7 +524,8 @@ def build_sqlite_hybrid(embedder: Embedder, *, db_path: str = ":memory:", rerank
         embedder: Text-to-vector (embedder.dim builds the vector table; model_id goes into the fingerprint).
         db_path: SQLite file path; defaults to ":memory:" for self-tests only, use a file path in production to persist.
         reranker: Optional reranker.
-        vec_table / kw_table: The two indexes' table names (same database, different tables).
+        vec_table: The vector index's table name.
+        kw_table: The keyword index's table name (same database as vec_table, different table).
         metadata_columns: Declares which metadata fields are filterable (e.g. ("doc_id", "tag")), shared by both
             indexes; defaults to none. Fixed at table-creation time; adding fields later requires a new table rebuild.
         fusion: Optional fusion strategy (FusionStrategy); if omitted, use the RRF default.

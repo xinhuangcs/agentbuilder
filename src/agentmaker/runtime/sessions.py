@@ -21,7 +21,7 @@ import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from ..core.clock import ensure_utc
 from ..core.exceptions import SessionError
@@ -33,6 +33,9 @@ from ..retrieval.scope import Scope
 from ..retrieval.scope_sql import (scope_column_for, scope_column_names, scope_exact_where_clause,
                                    scope_store_values, scope_where_clause)
 from ..retrieval.types import RetrievalResult
+
+if TYPE_CHECKING:
+    from ..retrieval.hybrid import HybridRetriever
 
 # Metadata flag marking that the TEXT content column holds JSON-encoded multimodal parts
 # (the flag is stripped again on load, so callers see their original metadata untouched).
@@ -336,7 +339,8 @@ class ConversationSearch(SessionStore):
     consistent" semantics as Memory). On clear, it first fetches all message ids of the session and drops them from the index too.
     """
 
-    def __init__(self, store: SessionStore, retriever, *, index_sync: Optional[IndexSync] = None):
+    def __init__(self, store: SessionStore, retriever: "HybridRetriever", *,
+                 index_sync: Optional[IndexSync] = None):
         """
         Args:
             store: The source of truth (any SessionStore, e.g. SqliteSessionStore); this class is still a SessionStore to the outside, attached directly by the Agent.

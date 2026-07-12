@@ -31,6 +31,8 @@ from .types import ChunkingConfig
 _RebuildItem = namedtuple("_RebuildItem", ("id", "content", "metadata"))   # adapts Chunk to the (.id / .content / .metadata) shape reconcile expects
 
 if TYPE_CHECKING:
+    from ..config import AgentmakerConfig
+    from ..retrieval.base import Embedder, Reranker
     from .contextualizer import Contextualizer
 
 
@@ -68,9 +70,10 @@ class IngestionPipeline:
         self._count = token_counter       # passed through to split_document; chunking estimates budgets with it
 
     @classmethod
-    def from_config(cls, config, *, embedder=None, retriever: Optional[HybridRetriever] = None,
+    def from_config(cls, config: "AgentmakerConfig", *, embedder: "Optional[Embedder]" = None,
+                    retriever: Optional[HybridRetriever] = None,
                     source_store: Optional[SourceStore] = None, db_path: str = ":memory:",
-                    reranker=None, contextualizer: Optional["Contextualizer"] = None,
+                    reranker: "Optional[Reranker]" = None, contextualizer: Optional["Contextualizer"] = None,
                     index_sync: Optional[IndexSync] = None,
                     token_counter: TokenCounter = count_tokens) -> "IngestionPipeline":
         """Assemble an IngestionPipeline from an AgentmakerConfig in one line: defaults to the sqlite backend; pass retriever / source_store to inject a custom backend.
@@ -83,8 +86,10 @@ class IngestionPipeline:
         Args:
             config: AgentmakerConfig (reads config.chunking).
             embedder: Required when using the default sqlite base; not needed if a retriever is injected.
-            retriever / source_store: Inject a custom backend (typically reuse the same instances built
-                by RagRetriever); if omitted, a default sqlite one is built.
+            retriever: Inject a custom retrieval backend (typically reuse the instance built by
+                RagRetriever); if omitted, a default sqlite one is built.
+            source_store: Inject a custom source-of-truth store (typically reuse the instance built by
+                RagRetriever); if omitted, a default sqlite one is built.
         """
         config.chunking.validate()                            # validate the slice we actually use before dispatch
         if retriever is None:

@@ -18,13 +18,17 @@ chunk.
 
 import hashlib
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from ..core.exceptions import RunCancelled, RunLimitExceeded
 from ..core.llm_clients import LLMClient
 from ..prompts import DEFAULT_PROMPTS
 from .types import Chunk, Document
 from ..core.trace_events import EVENT_RAG_CONTEXTUALIZE_FAILED
+
+if TYPE_CHECKING:
+    from ..prompts import PromptRegistry
+    from ..runtime.observability import Tracer
 
 
 class Contextualizer(ABC):
@@ -67,7 +71,7 @@ class LLMContextualizer(Contextualizer):
     """
 
     def __init__(self, llm: LLMClient, *, max_doc_chars: int = 4000, context_prompt: Optional[str] = None,
-                 prompts=None, tracer=None):
+                 prompts: "Optional[PromptRegistry]" = None, tracer: "Optional[Tracer]" = None):
         """
         Args:
             llm: The LLM that generates context (a cheap model is recommended).

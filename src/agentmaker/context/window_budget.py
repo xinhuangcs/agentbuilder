@@ -27,7 +27,10 @@ clamps each guarding against one failure mode.
 """
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from ..core.llm_clients import LLMClient
 
 
 @dataclass(frozen=True)
@@ -143,7 +146,7 @@ class WindowBudget:
         return max(self.spendable - self.rag_budget, 0)
 
     @classmethod
-    def for_run(cls, *, llm, cfg: WindowBudgetConfig, system_tokens: int = 0,
+    def for_run(cls, *, llm: "LLMClient", cfg: WindowBudgetConfig, system_tokens: int = 0,
                 tool_tokens: int = 0, rag_ratio: Optional[float] = None) -> Optional["WindowBudget"]:
         """Compute one ledger from this run's real window plus the measured fixed overhead; returns None when the window is unknown (llm.context_window is None).
 
