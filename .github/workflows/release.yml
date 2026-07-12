@@ -34,6 +34,13 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5      # v4.3.1
         with:
           persist-credentials: false
+          fetch-depth: 0                   # full history: the ancestry check below is unreliable on a shallow clone
+      - name: Refuse tags that are not on main history
+        run: |
+          git fetch --no-tags origin main
+          commit=$(git rev-parse "${GITHUB_SHA}^{commit}")
+          git merge-base --is-ancestor "$commit" origin/main \
+            || { echo "tag commit $commit is not an ancestor of origin/main"; exit 1; }
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e    # v6.8.0
         with:
           enable-cache: false              # no cache on the release path (avoid cache poisoning)
